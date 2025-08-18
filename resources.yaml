@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates an OTP in Secrets Manager, S3 & EC2 read-only IAM groups,
+  and two IAM users (ec2-user, s3-user) with console access using the OTP.
+  Users must change password at first login.
+
+Parameters:
+  IAMUserNamePrefix:
+    Type: String
+    Default: mylab
+    Description: Prefix for IAM usernames and groups.
+
+Resources:
+  UserPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: OTP for initial IAM console login
+      GenerateSecretString:
+        SecretStringTemplate: '{"note":"OTP for IAM console users"}'
+        GenerateStringKey: 'password'
+        PasswordLength: 16
+        ExcludePunctuation: true
+        RequireEachIncludedType: true
+      Tags:
+        - Key: Environment
+          Value: Lab
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  S3ReadOnlyGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: !Sub "${IAMUserNamePrefix}-S3ReadOnlyGroup"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+
+  EC2ReadOnlyGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: !Sub "${IAMUserNamePrefix}-EC2ReadOnlyGroup"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
+
+  S3User:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Sub "${IAMUserNamePrefix}-s3-user"
+      Groups: [ !Ref S3ReadOnlyGroup ]
+      LoginProfile:
+        Password: !Sub "{{resolve:secretsmanager:${UserPasswordSecret}:SecretString:password}}"
+        PasswordResetRequired: true
+      Tags:
+        - Key: Purpose
+          Value: S3Access
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  EC2User:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Sub "${IAMUserNamePrefix}-ec2-user"
+      Groups: [ !Ref EC2ReadOnlyGroup ]
+      LoginProfile:
+        Password: !Sub "{{resolve:secretsmanager:${UserPasswordSecret}:SecretString:password}}"
+        PasswordResetRequired: true
+      Tags:
+        - Key: Purpose
+          Value: EC2Access
+        - Key: ManagedBy
+          Value: CloudFormation
+
+Outputs:
+  OTPSecretArn:
+    Description: ARN of the Secrets Manager secret with the initial (shared) OTP
+    Value: !Ref UserPasswordSecret
+  S3UserConsoleLoginURL:
+    Description: Console login URL for the S3 user
+    Value: !Join
+      - ''
+      - - 'https://'
+        - !Ref AWS::AccountId
+        - '.signin.aws.amazon.com/console'
+        - '?userName='
+        - !Ref S3User
+        - '&forceCheck=true'
+  EC2UserConsoleLoginURL:
+    Description: Console login URL for the EC2 user
+    Value: !Join
+      - ''
+      - - 'https://'
+        - !Ref AWS::AccountId
+        - '.signin.aws.amazon.com/console'
+        - '?userName='
+        - !Ref EC2User
+        - '&forceCheck=true'
