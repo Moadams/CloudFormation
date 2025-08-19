@@ -83,6 +83,20 @@ Resources:
         - Key: ManagedBy
           Value: CloudFormation
 
+  BaakiUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: !Sub "${IAMUserNamePrefix}-abdul-baaki"
+      Groups: [ !Ref EC2ReadOnlyGroup ]
+      LoginProfile:
+        Password: !Sub "{{resolve:secretsmanager:${UserPasswordSecret}:SecretString:password}}"
+        PasswordResetRequired: true
+      Tags:
+        - Key: Purpose
+          Value: EC2Access
+        - Key: ManagedBy
+          Value: CloudFormation
+
 Outputs:
   OTPSecretArn:
     Description: ARN of the Secrets Manager secret with the initial (shared) OTP
